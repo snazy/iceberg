@@ -32,6 +32,9 @@ buildscript {
     classpath 'com.diffplug.spotless:spotless-plugin-gradle:3.14.0'
     classpath 'gradle.plugin.org.inferred:gradle-processors:2.1.0'
     classpath 'me.champeau.gradle:jmh-gradle-plugin:0.4.8'
+    classpath 'org.caffinitas.gradle.testsummary:gradle-test-summary:0.1.1'
+    classpath 'org.caffinitas.gradle.aggregatetestresults:gradle-aggretate-tests:0.1'
+    classpath 'org.caffinitas.gradle.testrerun:gradle-test-rerun:0.1'
   }
 }
 
@@ -72,6 +75,9 @@ allprojects {
 subprojects {
   apply plugin: 'nebula.dependency-recommender'
   apply plugin: 'java'
+  apply plugin: 'org.caffinitas.gradle.testsummary'
+  apply plugin: 'org.caffinitas.gradle.aggregatetestresults'
+  apply plugin: 'org.caffinitas.gradle.testrerun'
 
   configurations {
     testCompile.extendsFrom compileOnly
