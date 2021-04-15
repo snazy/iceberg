@@ -35,7 +35,7 @@ buildscript {
 
 plugins {
   id 'nebula.dependency-recommender' version '9.0.2'
-  id 'org.projectnessie' version '0.5.1'
+  id 'org.projectnessie' version '0.6.2'
 }
 
 try {
@@ -1123,17 +1123,19 @@ project(':iceberg-pig') {
 project(':iceberg-nessie') {
   apply plugin: 'org.projectnessie'
 
+  nessieQuarkusApp {
+    environment.put("HTTP_ACCESS_LOG_LEVEL", System.getProperty("test.log.level", "warn"))
+  }
+
   dependencies {
     compile project(':iceberg-core')
     compile project(path: ':iceberg-bundled-guava', configuration: 'shadow')
     compile "org.projectnessie:nessie-client"
 
     // dependency version "recommendation" via nebula.dependency-recommender don't work here "immediately",
-    // so pull the Quarkus + Nessie versions from the root-project
-    def quarkusVersion = rootProject.dependencyRecommendations.getRecommendedVersion("io.quarkus", "quarkus-bom")
+    // so pull the Nessie version from the root-project
     def nessieVersion = rootProject.dependencyRecommendations.getRecommendedVersion("org.projectnessie", "nessie-quarkus")
-    nessieQuarkusRuntime(enforcedPlatform("io.quarkus:quarkus-bom:${quarkusVersion}"))
-    nessieQuarkusServer "org.projectnessie:nessie-quarkus:${nessieVersion}"
+    nessieQuarkusServer "org.projectnessie:nessie-quarkus:${nessieVersion}:runner"
 
     compileOnly "org.apache.hadoop:hadoop-common"
 

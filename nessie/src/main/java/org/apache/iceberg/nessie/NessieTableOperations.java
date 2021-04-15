@@ -31,6 +31,7 @@ import org.projectnessie.client.NessieClient;
 import org.projectnessie.client.http.HttpClientException;
 import org.projectnessie.error.NessieConflictException;
 import org.projectnessie.error.NessieNotFoundException;
+import org.projectnessie.model.Branch;
 import org.projectnessie.model.CommitMeta;
 import org.projectnessie.model.Contents;
 import org.projectnessie.model.ContentsKey;
@@ -110,7 +111,11 @@ public class NessieTableOperations extends BaseMetastoreTableOperations {
       }
       Operations op = ImmutableOperations.builder().addOperations(Operation.Put.of(key, newTable))
           .commitMeta(cm.build()).build();
-      client.getTreeApi().commitMultipleOperations(reference.getAsBranch().getName(), reference.getHash(), op);
+      Branch branch = client.getTreeApi().commitMultipleOperations(reference.getAsBranch().getName(),
+          reference.getHash(), op);
+      if (branch != null) {
+        reference.updateReference(branch);
+      }
 
       delete = false;
     } catch (NessieConflictException ex) {
