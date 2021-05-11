@@ -1129,6 +1129,13 @@ project(':iceberg-nessie') {
     environment.put("HTTP_ACCESS_LOG_LEVEL", System.getProperty("test.log.level", "warn"))
   }
 
+  sourceSets {
+    integration {
+      java.srcDir "$projectDir/src/integration/java"
+      resources.srcDir "$projectDir/src/integration/resources"
+    }
+  }
+
   dependencies {
     compile project(':iceberg-core')
     compile project(path: ':iceberg-bundled-guava', configuration: 'shadow')
@@ -1142,7 +1149,31 @@ project(':iceberg-nessie') {
     compileOnly "org.apache.hadoop:hadoop-common"
 
     testCompile project(path: ':iceberg-api', configuration: 'testArtifacts')
+
+    integrationImplementation 'org.apache.spark:spark-hive_2.12'
+    integrationImplementation 'junit:junit'
+    integrationImplementation 'org.slf4j:slf4j-simple'
+    integrationImplementation project(':iceberg-nessie')
+    integrationImplementation project(path: ':iceberg-api', configuration: 'testArtifacts')
+    integrationImplementation project(path: ':iceberg-hive-metastore', configuration: 'testArtifacts')
+    integrationImplementation project(path: ':iceberg-spark', configuration: 'testArtifacts')
+    integrationImplementation project(path: ':iceberg-spark3', configuration: 'testArtifacts')
+    integrationImplementation project(path: ':iceberg-spark3-extensions', configuration: 'testArtifacts')
+    integrationRuntimeOnly project(':iceberg-spark3-runtime')
+    // Not allowed on our classpath, only the runtime jar is allowed
+    integrationCompileOnly project(':iceberg-spark3-extensions')
+    integrationCompileOnly project(':iceberg-spark3')
+    integrationCompileOnly project(':iceberg-spark')
   }
+
+  task integrationTest(type: Test) {
+    description = "Test Spark3 Runtime Jar"
+    group = "verification"
+    testClassesDirs = sourceSets.integration.output.classesDirs
+    classpath = sourceSets.integration.runtimeClasspath + files(jar.archiveFile.get().asFile.path)
+    inputs.file(jar.archiveFile.get().asFile.path)
+  }
+  check.dependsOn integrationTest
 }
 
 @Memoized
