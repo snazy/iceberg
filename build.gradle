@@ -21,6 +21,8 @@ import groovy.transform.Memoized
 
 buildscript {
   repositories {
+    mavenCentral()
+    mavenLocal()
     gradlePluginPortal()
   }
   dependencies {
@@ -35,7 +37,7 @@ buildscript {
 
 plugins {
   id 'nebula.dependency-recommender' version '9.0.2'
-  id 'org.projectnessie' version '0.6.2'
+  id 'org.projectnessie' version '0.6.2-SNAPSHOT'
 }
 
 try {

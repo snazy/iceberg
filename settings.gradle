@@ -17,6 +17,14 @@
  * under the License.
  */
 
+pluginManagement {
+  repositories {
+    mavenLocal()
+    mavenCentral()
+    gradlePluginPortal()
+  }
+}
+
 rootProject.name = 'iceberg'
 include 'api'
 include 'common'
