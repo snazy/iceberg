@@ -80,7 +80,7 @@ public abstract class BaseTestIceberg {
         tree.deleteTag(r.getName(), r.getHash());
       }
     }
-    tree.createReference(Branch.of("main", null));
+    tree.createReference(null, Branch.of("main", null));
   }
 
   @BeforeEach
@@ -94,7 +94,7 @@ public abstract class BaseTestIceberg {
     resetData();
 
     try {
-      tree.createReference(Branch.of(branch, null));
+      tree.createReference(null, Branch.of(branch, null));
     } catch (Exception e) {
       // ignore, already created. Cant run this in BeforeAll as quarkus hasn't disabled auth
     }
@@ -137,7 +137,7 @@ public abstract class BaseTestIceberg {
   }
 
   void createBranch(String name, String hash) throws NessieNotFoundException, NessieConflictException {
-    tree.createReference(Branch.of(name, hash));
+    tree.createReference(null, Branch.of(name, hash));
   }
 
   @AfterEach
