@@ -22,7 +22,6 @@ package org.apache.iceberg;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,12 +35,10 @@ import org.apache.iceberg.exceptions.CommitStateUnknownException;
 import org.apache.iceberg.exceptions.RuntimeIOException;
 import org.apache.iceberg.io.OutputFile;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.util.Exceptions;
 import org.apache.iceberg.util.Tasks;
-import org.apache.iceberg.util.ThreadPools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,11 +50,9 @@ import static org.apache.iceberg.TableProperties.COMMIT_NUM_RETRIES;
 import static org.apache.iceberg.TableProperties.COMMIT_NUM_RETRIES_DEFAULT;
 import static org.apache.iceberg.TableProperties.COMMIT_TOTAL_RETRY_TIME_MS;
 import static org.apache.iceberg.TableProperties.COMMIT_TOTAL_RETRY_TIME_MS_DEFAULT;
-import static org.apache.iceberg.TableProperties.MANIFEST_LISTS_ENABLED;
-import static org.apache.iceberg.TableProperties.MANIFEST_LISTS_ENABLED_DEFAULT;
 
 @SuppressWarnings("UnnecessaryAnonymousClass")
-abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
+public abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
   private static final Logger LOG = LoggerFactory.getLogger(SnapshotProducer.class);
   static final Set<ManifestFile> EMPTY_SET = Sets.newHashSet();
 
@@ -85,6 +80,12 @@ abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
   private TableMetadata base;
   private boolean stageOnly = false;
   private Consumer<String> deleteFunc = defaultDelete;
+
+  protected SnapshotProducer(TableOperations ops, TableMetadata base) {
+    this.ops = ops;
+    this.base = base;
+    this.manifestsWithMetadata = null;
+  }
 
   protected SnapshotProducer(TableOperations ops) {
     this.ops = ops;
@@ -163,99 +164,30 @@ abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
 
     List<ManifestFile> manifests = apply(base);
 
-    if (base.formatVersion() > 1 || base.propertyAsBoolean(MANIFEST_LISTS_ENABLED, MANIFEST_LISTS_ENABLED_DEFAULT)) {
-      OutputFile manifestList = manifestListPath();
-
-      try (ManifestListWriter writer = ManifestLists.write(
-          ops.current().formatVersion(), manifestList, snapshotId(), parentSnapshotId, sequenceNumber)) {
-
-        // keep track of the manifest lists created
-        manifestLists.add(manifestList.location());
-
-        ManifestFile[] manifestFiles = new ManifestFile[manifests.size()];
-
-        Tasks.range(manifestFiles.length)
-            .stopOnFailure().throwFailureWhenFinished()
-            .executeWith(ThreadPools.getWorkerPool())
-            .run(index ->
-                manifestFiles[index] = manifestsWithMetadata.get(manifests.get(index)));
-
-        writer.addAll(Arrays.asList(manifestFiles));
-
-      } catch (IOException e) {
-        throw new RuntimeIOException(e, "Failed to write manifest list file");
+    return new BaseSnapshotBuilder(base, ops.io(), ops.current().formatVersion(), operation(), snapshotId()) {
+      @Override
+      protected ManifestFile manifest(ManifestFile existing) {
+        return manifestsWithMetadata.get(existing);
       }
 
-      return new BaseSnapshot(ops.io(),
-          sequenceNumber, snapshotId(), parentSnapshotId, System.currentTimeMillis(), operation(), summary(base),
-          base.currentSchemaId(), manifestList.location());
+      @Override
+      protected void addManifestListLocation(String manifestListLocation) {
+        manifestLists.add(manifestListLocation);
+      }
 
-    } else {
-      return new BaseSnapshot(ops.io(),
-          snapshotId(), parentSnapshotId, System.currentTimeMillis(), operation(), summary(base),
-          base.currentSchemaId(), manifests);
-    }
+      @Override
+      protected OutputFile manifestListPath() {
+        return SnapshotProducer.this.manifestListPath();
+      }
+
+      @Override
+      protected Map<String, String> summary() {
+        return SnapshotProducer.this.summary();
+      }
+    }.buildSnapshot(parentSnapshotId, sequenceNumber, manifests);
   }
 
   protected abstract Map<String, String> summary();
-
-  /**
-   * Returns the snapshot summary from the implementation and updates totals.
-   */
-  private Map<String, String> summary(TableMetadata previous) {
-    Map<String, String> summary = summary();
-
-    if (summary == null) {
-      return ImmutableMap.of();
-    }
-
-    Map<String, String> previousSummary;
-    if (previous.currentSnapshot() != null) {
-      if (previous.currentSnapshot().summary() != null) {
-        previousSummary = previous.currentSnapshot().summary();
-      } else {
-        // previous snapshot had no summary, use an empty summary
-        previousSummary = ImmutableMap.of();
-      }
-    } else {
-      // if there was no previous snapshot, default the summary to start totals at 0
-      ImmutableMap.Builder<String, String> summaryBuilder = ImmutableMap.builder();
-      summaryBuilder
-          .put(SnapshotSummary.TOTAL_RECORDS_PROP, "0")
-          .put(SnapshotSummary.TOTAL_FILE_SIZE_PROP, "0")
-          .put(SnapshotSummary.TOTAL_DATA_FILES_PROP, "0")
-          .put(SnapshotSummary.TOTAL_DELETE_FILES_PROP, "0")
-          .put(SnapshotSummary.TOTAL_POS_DELETES_PROP, "0")
-          .put(SnapshotSummary.TOTAL_EQ_DELETES_PROP, "0");
-      previousSummary = summaryBuilder.build();
-    }
-
-    ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
-
-    // copy all summary properties from the implementation
-    builder.putAll(summary);
-
-    updateTotal(
-        builder, previousSummary, SnapshotSummary.TOTAL_RECORDS_PROP,
-        summary, SnapshotSummary.ADDED_RECORDS_PROP, SnapshotSummary.DELETED_RECORDS_PROP);
-    updateTotal(
-        builder, previousSummary, SnapshotSummary.TOTAL_FILE_SIZE_PROP,
-        summary, SnapshotSummary.ADDED_FILE_SIZE_PROP, SnapshotSummary.REMOVED_FILE_SIZE_PROP);
-    updateTotal(
-        builder, previousSummary, SnapshotSummary.TOTAL_DATA_FILES_PROP,
-        summary, SnapshotSummary.ADDED_FILES_PROP, SnapshotSummary.DELETED_FILES_PROP);
-    updateTotal(
-        builder, previousSummary, SnapshotSummary.TOTAL_DELETE_FILES_PROP,
-        summary, SnapshotSummary.ADDED_DELETE_FILES_PROP, SnapshotSummary.REMOVED_DELETE_FILES_PROP);
-    updateTotal(
-        builder, previousSummary, SnapshotSummary.TOTAL_POS_DELETES_PROP,
-        summary, SnapshotSummary.ADDED_POS_DELETES_PROP, SnapshotSummary.REMOVED_POS_DELETES_PROP);
-    updateTotal(
-        builder, previousSummary, SnapshotSummary.TOTAL_EQ_DELETES_PROP,
-        summary, SnapshotSummary.ADDED_EQ_DELETES_PROP, SnapshotSummary.REMOVED_EQ_DELETES_PROP);
-
-    return builder.build();
-  }
 
   protected TableMetadata current() {
     return base;
@@ -445,35 +377,6 @@ abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
 
     } catch (IOException e) {
       throw new RuntimeIOException(e, "Failed to read manifest: %s", manifest.path());
-    }
-  }
-
-  private static void updateTotal(ImmutableMap.Builder<String, String> summaryBuilder,
-                                  Map<String, String> previousSummary, String totalProperty,
-                                  Map<String, String> currentSummary,
-                                  String addedProperty, String deletedProperty) {
-    String totalStr = previousSummary.get(totalProperty);
-    if (totalStr != null) {
-      try {
-        long newTotal = Long.parseLong(totalStr);
-
-        String addedStr = currentSummary.get(addedProperty);
-        if (newTotal >= 0 && addedStr != null) {
-          newTotal += Long.parseLong(addedStr);
-        }
-
-        String deletedStr = currentSummary.get(deletedProperty);
-        if (newTotal >= 0 && deletedStr != null) {
-          newTotal -= Long.parseLong(deletedStr);
-        }
-
-        if (newTotal >= 0) {
-          summaryBuilder.put(totalProperty, String.valueOf(newTotal));
-        }
-
-      } catch (NumberFormatException e) {
-        // ignore and do not add total
-      }
     }
   }
 }

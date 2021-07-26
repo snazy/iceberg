@@ -184,14 +184,18 @@ public abstract class BaseMetastoreTableOperations implements TableOperations {
             "Table UUID does not match: current=%s != refreshed=%s", currentMetadata.uuid(), newUUID);
       }
 
-      this.currentMetadata = newMetadata.get();
+      this.currentMetadata = validateRefreshedMetadata(newMetadata.get());
       this.currentMetadataLocation = newLocation;
       this.version = parseVersion(newLocation);
     }
     this.shouldRefresh = false;
   }
 
-  private String metadataFileLocation(TableMetadata metadata, String filename) {
+  protected TableMetadata validateRefreshedMetadata(TableMetadata metadata) {
+    return metadata;
+  }
+
+  protected String metadataFileLocation(TableMetadata metadata, String filename) {
     String metadataLocation = metadata.properties()
         .get(TableProperties.WRITE_METADATA_LOCATION);
 

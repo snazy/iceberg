@@ -55,6 +55,7 @@ import org.projectnessie.error.NessieConflictException;
 import org.projectnessie.error.NessieNotFoundException;
 import org.projectnessie.model.Branch;
 import org.projectnessie.model.Contents;
+import org.projectnessie.model.IcebergSnapshot;
 import org.projectnessie.model.IcebergTable;
 import org.projectnessie.model.ImmutableDelete;
 import org.projectnessie.model.ImmutableOperations;
@@ -166,7 +167,7 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
   public boolean dropTable(TableIdentifier identifier, boolean purge) {
     reference.checkMutable();
 
-    IcebergTable existingTable = table(identifier);
+    IcebergSnapshot existingTable = table(identifier);
     if (existingTable == null) {
       return false;
     }
@@ -206,11 +207,11 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
 
     TableIdentifier to = NessieUtil.removeCatalogName(toOriginal, name());
 
-    IcebergTable existingFromTable = table(from);
+    IcebergSnapshot existingFromTable = table(from);
     if (existingFromTable == null) {
       throw new NoSuchTableException("table %s doesn't exists", from.name());
     }
-    IcebergTable existingToTable = table(to);
+    IcebergSnapshot existingToTable = table(to);
     if (existingToTable != null) {
       throw new AlreadyExistsException("table %s already exists", to.name());
     }
@@ -333,11 +334,11 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
     return reference.getName();
   }
 
-  private IcebergTable table(TableIdentifier tableIdentifier) {
+  private IcebergSnapshot table(TableIdentifier tableIdentifier) {
     try {
       Contents table = client.getContentsApi()
           .getContents(NessieUtil.toKey(tableIdentifier), reference.getName(), reference.getHash());
-      return table.unwrap(IcebergTable.class).orElse(null);
+      return table.unwrap(IcebergSnapshot.class).orElse(null);
     } catch (NessieNotFoundException e) {
       return null;
     }

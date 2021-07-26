@@ -53,9 +53,11 @@ import org.projectnessie.error.NessieNotFoundException;
 import org.projectnessie.model.Branch;
 import org.projectnessie.model.CommitMeta;
 import org.projectnessie.model.ContentsKey;
-import org.projectnessie.model.IcebergTable;
+import org.projectnessie.model.IcebergSnapshot;
+import org.projectnessie.model.ImmutableMerge;
 import org.projectnessie.model.ImmutableOperations;
 import org.projectnessie.model.ImmutablePut;
+import org.projectnessie.model.Merge;
 
 import static org.apache.iceberg.TableMetadataParser.getFileExtension;
 import static org.apache.iceberg.types.Types.NestedField.optional;
@@ -99,10 +101,189 @@ public class TestNessieTable extends BaseTestIceberg {
     super.afterEach();
   }
 
-  private org.projectnessie.model.IcebergTable getTable(ContentsKey key) throws NessieNotFoundException {
+  private org.projectnessie.model.IcebergSnapshot getTable(ContentsKey key)
+      throws NessieNotFoundException {
+    return getTable(BRANCH, key);
+  }
+
+  private org.projectnessie.model.IcebergSnapshot getTable(String ref, ContentsKey key)
+      throws NessieNotFoundException {
     return client.getContentsApi()
-        .getContents(key, BRANCH, null)
-        .unwrap(IcebergTable.class).get();
+        .getContents(key, ref, null)
+        .unwrap(IcebergSnapshot.class).get();
+  }
+
+  /**
+   * Verify that Nessie always returns the globally-current global-contents w/ only DDLs.
+   */
+  @Test
+  public void verifyGlobalStateMovesForDDL() throws Exception {
+    //  1. initialize table
+    Table icebergTable = catalog.loadTable(TABLE_IDENTIFIER);
+    icebergTable.updateSchema().addColumn("initial_column", Types.LongType.get()).commit();
+
+    //  2. create 2nd branch
+    String testCaseBranch = "verify-global-moving";
+    client.getTreeApi().createReference(BRANCH, Branch.of(testCaseBranch, catalog.currentHash()));
+    NessieCatalog branchCatalog = initCatalog(testCaseBranch);
+
+    IcebergSnapshot contentsInitialMain = getTable(BRANCH, KEY);
+    IcebergSnapshot contentsInitialBranch = getTable(testCaseBranch, KEY);
+    Table tableInitialMain = catalog.loadTable(TABLE_IDENTIFIER);
+    Table tableInitialBranch = branchCatalog.loadTable(TABLE_IDENTIFIER);
+
+    // verify table-metadata-location + snapshot-id
+    Assertions.assertThat(contentsInitialMain)
+        .as("global-contents + snapshot-id equal on both branches in Nessie")
+        .isEqualTo(contentsInitialBranch);
+    Assertions.assertThat(tableInitialMain.currentSnapshot().snapshotId())
+        .as("snapshot-id equal on both branches in Iceberg")
+        .isEqualTo(tableInitialBranch.currentSnapshot().snapshotId());
+
+    //  3. modify table in "main" branch (add a column)
+    icebergTable.updateSchema().addColumn("another_column", Types.LongType.get()).commit();
+
+    //  --> assert getValue() against both branches returns the updated metadata-location
+    IcebergSnapshot contentsPostAddMain = getTable(KEY);
+    IcebergSnapshot contentsPostAddBranch = getTable(testCaseBranch, KEY);
+    Table tablePostAddMain = catalog.loadTable(TABLE_IDENTIFIER);
+    Table tablePostAddBranch = branchCatalog.loadTable(TABLE_IDENTIFIER);
+
+    // verify table-metadata-location
+    Assertions.assertThat(contentsInitialMain.getMetadataLocation())
+        .as("global-contents changed on %s", BRANCH)
+        .isNotEqualTo(contentsPostAddMain.getMetadataLocation());
+    Assertions.assertThat(contentsInitialBranch.getMetadataLocation())
+        .as("global-contents changed on %s", testCaseBranch)
+        .isNotEqualTo(contentsPostAddBranch.getMetadataLocation());
+    Assertions.assertThat(contentsPostAddMain.getMetadataLocation())
+        .as("global-contents equal on both branches")
+        .isEqualTo(contentsPostAddBranch.getMetadataLocation());
+    // verify snapshot-id
+    Assertions.assertThat(contentsPostAddMain.getCurrentSnapshotId())
+        .as("snapshot-ids different on both branches in Nessie")
+        .isNotEqualTo(contentsPostAddBranch.getCurrentSnapshotId());
+    Assertions.assertThat(contentsPostAddBranch.getCurrentSnapshotId())
+        .as("snapshot-id on 'branch' did not change in Nessie")
+        .isEqualTo(contentsInitialBranch.getCurrentSnapshotId());
+    Assertions.assertThat(tablePostAddMain.currentSnapshot().snapshotId())
+        .as("snapshot-id did change on 'main' in Iceberg")
+        .isNotEqualTo(tableInitialBranch.currentSnapshot().snapshotId());
+    Assertions.assertThat(tablePostAddBranch.currentSnapshot().snapshotId())
+        .as("snapshot-id did not change on 'branch' in Iceberg")
+        .isEqualTo(tableInitialBranch.currentSnapshot().snapshotId());
+  }
+
+  /**
+   * Verify that Nessie always returns the globally-current global-contents w/ only DMLs.
+   */
+  @Test
+  public void verifyGlobalStateMovesForDML() throws Exception {
+    //  1. initialize table
+    Table icebergTable = catalog.loadTable(TABLE_IDENTIFIER);
+    icebergTable.updateSchema().addColumn("initial_column", Types.LongType.get()).commit();
+
+    //  2. create 2nd branch
+    String testCaseBranch = "verify-global-moving";
+    client.getTreeApi().createReference(BRANCH, Branch.of(testCaseBranch, catalog.currentHash()));
+    NessieCatalog branchCatalog = initCatalog(testCaseBranch);
+
+    IcebergSnapshot contentsInitialMain = getTable(BRANCH, KEY);
+    IcebergSnapshot contentsInitialBranch = getTable(testCaseBranch, KEY);
+    Table tableInitialMain = catalog.loadTable(TABLE_IDENTIFIER);
+    Table tableInitialBranch = branchCatalog.loadTable(TABLE_IDENTIFIER);
+
+    // verify table-metadata-location + snapshot-id
+    Assertions.assertThat(contentsInitialMain)
+        .as("global-contents + snapshot-id equal on both branches in Nessie")
+        .isEqualTo(contentsInitialBranch);
+    Assertions.assertThat(tableInitialMain.currentSnapshot().snapshotId())
+        .as("snapshot-id equal on both branches in Iceberg")
+        .isEqualTo(tableInitialBranch.currentSnapshot().snapshotId());
+
+    //  3. modify table in "main" branch (add some data)
+
+    DataFile file1 = makeDataFile(icebergTable, addRecordsToFile(icebergTable, "file1"));
+
+    icebergTable.newAppend().appendFile(file1).commit();
+
+    IcebergSnapshot contentsAfter1Main = getTable(KEY);
+    IcebergSnapshot contentsAfter1Branch = getTable(testCaseBranch, KEY);
+    Table tableAfter1Main = catalog.loadTable(TABLE_IDENTIFIER);
+    Table tableAfter1Branch = branchCatalog.loadTable(TABLE_IDENTIFIER);
+
+    //  --> assert getValue() against both branches returns the updated metadata-location
+    // verify table-metadata-location
+    Assertions.assertThat(contentsInitialMain.getMetadataLocation())
+        .as("global-contents changed on %s", BRANCH)
+        .isNotEqualTo(contentsAfter1Main.getMetadataLocation());
+    Assertions.assertThat(contentsInitialBranch.getMetadataLocation())
+        .as("global-contents changed on %s", testCaseBranch)
+        .isNotEqualTo(contentsAfter1Branch.getMetadataLocation());
+    Assertions.assertThat(contentsAfter1Main.getMetadataLocation())
+        .as("global-contents equal on both branches")
+        .isEqualTo(contentsAfter1Branch.getMetadataLocation());
+    // verify snapshot-id
+    Assertions.assertThat(contentsAfter1Branch.getCurrentSnapshotId())
+        .as("snapshot-ids different on both branches in Nessie")
+        .isNotEqualTo(contentsAfter1Main.getCurrentSnapshotId());
+    Assertions.assertThat(contentsAfter1Branch.getCurrentSnapshotId())
+        .as("snapshot-id on 'branch' did not change in Nessie")
+        .isEqualTo(contentsInitialBranch.getCurrentSnapshotId());
+    Assertions.assertThat(tableAfter1Main.currentSnapshot().snapshotId())
+        .as("snapshot-id in Iceberg did change on 'main'")
+        .isNotEqualTo(tableInitialBranch.currentSnapshot().snapshotId());
+    Assertions.assertThat(tableAfter1Branch.currentSnapshot().snapshotId())
+        .as("snapshot-id in Iceberg did not change on 'branch'")
+        .isEqualTo(tableInitialBranch.currentSnapshot().snapshotId());
+    // verify manifests
+    Assertions.assertThat(tableAfter1Main.currentSnapshot().allManifests())
+        .as("verify number of manifests on 'main'")
+        .hasSize(1);
+    Assertions.assertThat(tableAfter1Branch.currentSnapshot().allManifests())
+        .as("verify number of manifests on 'branch'")
+        .isEmpty();
+
+    //  4. modify table in "main" branch (add some data) again
+
+    DataFile file2 = makeDataFile(icebergTable, addRecordsToFile(icebergTable, "file2"));
+
+    icebergTable.newAppend().appendFile(file2).commit();
+
+    IcebergSnapshot contentsAfter2Main = getTable(KEY);
+    IcebergSnapshot contentsAfter2Branch = getTable(testCaseBranch, KEY);
+    Table tableAfter2Main = catalog.loadTable(TABLE_IDENTIFIER);
+    Table tableAfter2Branch = branchCatalog.loadTable(TABLE_IDENTIFIER);
+
+    //  --> assert getValue() against both branches returns the updated metadata-location
+    // verify table-metadata-location
+    Assertions.assertThat(contentsAfter2Main.getMetadataLocation())
+        .as("global-contents changed on %s", BRANCH)
+        .isNotEqualTo(contentsInitialMain.getMetadataLocation())
+        .isNotEqualTo(contentsAfter1Main.getMetadataLocation());
+    Assertions.assertThat(contentsAfter2Branch.getMetadataLocation())
+        .as("global-contents must change on %s", testCaseBranch)
+        .isNotEqualTo(contentsAfter1Branch.getMetadataLocation())
+        .isEqualTo(contentsAfter2Main.getMetadataLocation());
+    // verify snapshot-id
+    Assertions.assertThat(contentsAfter2Branch.getCurrentSnapshotId())
+        .as("snapshot-id on 'branch' did not change")
+        .isEqualTo(contentsAfter1Branch.getCurrentSnapshotId())
+        .isEqualTo(contentsInitialBranch.getCurrentSnapshotId());
+    Assertions.assertThat(tableAfter2Main.currentSnapshot().snapshotId())
+        .as("snapshot-id did change on 'main'")
+        .isNotEqualTo(tableInitialBranch.currentSnapshot().snapshotId())
+        .isNotEqualTo(tableAfter1Main.currentSnapshot().snapshotId());
+    Assertions.assertThat(tableAfter2Branch.currentSnapshot().snapshotId())
+        .as("snapshot-id did not change on 'branch'")
+        .isEqualTo(tableInitialBranch.currentSnapshot().snapshotId());
+    // verify manifests
+    Assertions.assertThat(tableAfter2Main.currentSnapshot().allManifests())
+        .as("verify number of manifests on 'main'")
+        .hasSize(2);
+    Assertions.assertThat(tableAfter2Branch.currentSnapshot().allManifests())
+        .as("verify number of manifests on 'branch'")
+        .isEmpty();
   }
 
   @Test
@@ -113,14 +294,17 @@ public class TestNessieTable extends BaseTestIceberg {
     Table icebergTable = catalog.loadTable(TABLE_IDENTIFIER);
     // add a column
     icebergTable.updateSchema().addColumn("mother", Types.LongType.get()).commit();
-    IcebergTable table = getTable(KEY);
+
+    Assertions.assertThat(manifestFiles(tableName)).isNotNull().hasSize(2);
+
+    IcebergSnapshot table = getTable(KEY);
     // check parameters are in expected state
     String expected = (temp.toUri() + DB_NAME + "/" + tableName).replace("///", "/");
     Assertions.assertThat(getTableLocation(tableName)).isEqualTo(expected);
 
-    // Only 1 snapshotFile Should exist and no manifests should exist
+    // Only 1 snapshotFile Should exist and no *additional* manifests should exist
     Assertions.assertThat(metadataVersionFiles(tableName)).isNotNull().hasSize(2);
-    Assertions.assertThat(manifestFiles(tableName)).isNotNull().isEmpty();
+    Assertions.assertThat(manifestFiles(tableName)).isNotNull().hasSize(2);
 
     verifyCommitMetadata();
   }
@@ -175,11 +359,7 @@ public class TestNessieTable extends BaseTestIceberg {
 
     String fileLocation = addRecordsToFile(table, "file");
 
-    DataFile file = DataFiles.builder(table.spec())
-        .withRecordCount(3)
-        .withPath(fileLocation)
-        .withFileSizeInBytes(Files.localInput(fileLocation).getLength())
-        .build();
+    DataFile file = makeDataFile(table, fileLocation);
 
     table.newAppend().appendFile(file).commit();
 
@@ -207,17 +387,8 @@ public class TestNessieTable extends BaseTestIceberg {
     String location1 = addRecordsToFile(table, "file1");
     String location2 = addRecordsToFile(table, "file2");
 
-    DataFile file1 = DataFiles.builder(table.spec())
-        .withRecordCount(3)
-        .withPath(location1)
-        .withFileSizeInBytes(Files.localInput(location2).getLength())
-        .build();
-
-    DataFile file2 = DataFiles.builder(table.spec())
-        .withRecordCount(3)
-        .withPath(location2)
-        .withFileSizeInBytes(Files.localInput(location1).getLength())
-        .build();
+    DataFile file1 = makeDataFile(table, location1);
+    DataFile file2 = makeDataFile(table, location2);
 
     // add both data files
     table.newAppend().appendFile(file1).appendFile(file2).commit();
@@ -254,12 +425,13 @@ public class TestNessieTable extends BaseTestIceberg {
     Table icebergTable = catalog.loadTable(TABLE_IDENTIFIER);
     // add a column
     icebergTable.updateSchema().addColumn("data", Types.LongType.get()).commit();
+    Assertions.assertThat(manifestFiles(TABLE_NAME)).isNotNull().hasSize(2);
 
     icebergTable = catalog.loadTable(TABLE_IDENTIFIER);
 
-    // Only 2 snapshotFile Should exist and no manifests should exist
+    // Only 2 snapshotFile Should exist and no *additional* manifests should exist
     Assertions.assertThat(metadataVersionFiles(TABLE_NAME)).isNotNull().hasSize(2);
-    Assertions.assertThat(manifestFiles(TABLE_NAME)).isNotNull().isEmpty();
+    Assertions.assertThat(manifestFiles(TABLE_NAME)).isNotNull().hasSize(2);
     Assertions.assertThat(altered.asStruct()).isEqualTo(icebergTable.schema().asStruct());
   }
 
@@ -268,11 +440,11 @@ public class TestNessieTable extends BaseTestIceberg {
     Table icebergTable = catalog.loadTable(TABLE_IDENTIFIER);
     Branch branch = (Branch) client.getTreeApi().getReferenceByName(BRANCH);
 
-    IcebergTable table = client.getContentsApi().getContents(KEY, BRANCH, null).unwrap(IcebergTable.class).get();
+    IcebergSnapshot table = getTable(BRANCH, KEY);
 
     client.getTreeApi().commitMultipleOperations(branch.getName(), branch.getHash(),
         ImmutableOperations.builder().addOperations(
-            ImmutablePut.builder().key(KEY).contents(IcebergTable.of("dummytable.metadata.json"))
+            ImmutablePut.builder().key(KEY).contents(IcebergSnapshot.of("dummytable.metadata.json", 42))
                 .build()).commitMeta(CommitMeta.fromMessage("")).build());
 
     Assertions.assertThatThrownBy(() -> icebergTable.updateSchema().addColumn("data", Types.LongType.get()).commit())
@@ -352,5 +524,13 @@ public class TestNessieTable extends BaseTestIceberg {
       }
     }
     return fileLocation;
+  }
+
+  private DataFile makeDataFile(Table icebergTable, String location1) {
+    return DataFiles.builder(icebergTable.spec())
+        .withRecordCount(3)
+        .withPath(location1)
+        .withFileSizeInBytes(Files.localInput(location1).getLength())
+        .build();
   }
 }
