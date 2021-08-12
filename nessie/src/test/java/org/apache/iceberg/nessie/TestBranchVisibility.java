@@ -74,8 +74,8 @@ public class TestBranchVisibility extends BaseTestIceberg {
 
     testCatalogEquality(catalog, testCatalog, false, false);
 
-    // global-metadata (pointer to table-metadata) must have changed
-    Assertions.assertThat(initialMetadataLocation).isNotEqualTo(metadataLocation(catalog, tableIdentifier2));
+    // points to the previous metadata location
+    Assertions.assertThat(initialMetadataLocation).isEqualTo(metadataLocation(catalog, tableIdentifier2));
   }
 
   @Test
@@ -128,40 +128,25 @@ public class TestBranchVisibility extends BaseTestIceberg {
     String table1 = metadataLocation(catalog, tableIdentifier1);
     String testTable2 = metadataLocation(compareCatalog, tableIdentifier2);
     String table2 = metadataLocation(catalog, tableIdentifier2);
-    long snapshotTestTable1 = compareCatalog.loadTable(tableIdentifier1).currentSnapshot().snapshotId();
-    long snapshotTable1 = catalog.loadTable(tableIdentifier1).currentSnapshot().snapshotId();
-    long snapshotTestTable2 = compareCatalog.loadTable(tableIdentifier2).currentSnapshot().snapshotId();
-    long snapshotTable2 = catalog.loadTable(tableIdentifier2).currentSnapshot().snapshotId();
 
-    Assertions.assertThat(table1)
-        .as("Global-contents for table %s must be equal for both catalogs", tableIdentifier1)
-        .isEqualTo(testTable1);
-    Assertions.assertThat(table2)
-        .as("Global-contents for table %s must be equal for both catalogs", tableIdentifier2)
-        .isEqualTo(testTable2);
-
-    Assertions.assertThat(snapshotTable1 == snapshotTestTable1)
+    Assertions.assertThat(table1.equals(testTable1))
         .withFailMessage(() -> String.format(
-            "Table %s on ref %s should%s equal table %s on ref %s, snapshot-ids: %d vs %d",
+            "Table %s on ref %s should%s equal table %s on ref %s",
             tableIdentifier1.name(),
             tableIdentifier2.name(),
             table1Equal ? "" : " not",
             catalog.currentRefName(),
-            testCatalog.currentRefName(),
-            snapshotTable1,
-            snapshotTestTable1))
+            testCatalog.currentRefName()))
         .isEqualTo(table1Equal);
 
-    Assertions.assertThat(snapshotTable2 == snapshotTestTable2)
+    Assertions.assertThat(table2.equals(testTable2))
         .withFailMessage(() -> String.format(
-            "Table %s on ref %s should%s equal table %s on ref %s, snapshot-ids: %d vs %d",
+            "Table %s on ref %s should%s equal table %s on ref %s",
             tableIdentifier1.name(),
             tableIdentifier2.name(),
             table1Equal ? "" : " not",
             catalog.currentRefName(),
-            testCatalog.currentRefName(),
-            snapshotTable2,
-            snapshotTestTable2))
+            testCatalog.currentRefName()))
         .isEqualTo(table2Equal);
   }
 }

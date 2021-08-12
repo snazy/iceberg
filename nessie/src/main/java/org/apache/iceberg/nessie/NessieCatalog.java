@@ -57,9 +57,11 @@ import org.projectnessie.model.Branch;
 import org.projectnessie.model.Contents;
 import org.projectnessie.model.IcebergSnapshot;
 import org.projectnessie.model.IcebergTable;
+import org.projectnessie.model.IcebergTableState;
 import org.projectnessie.model.ImmutableDelete;
 import org.projectnessie.model.ImmutableOperations;
 import org.projectnessie.model.ImmutablePut;
+import org.projectnessie.model.ImmutablePutGlobal;
 import org.projectnessie.model.Operations;
 import org.projectnessie.model.Reference;
 import org.slf4j.Logger;
@@ -167,7 +169,7 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
   public boolean dropTable(TableIdentifier identifier, boolean purge) {
     reference.checkMutable();
 
-    IcebergSnapshot existingTable = table(identifier);
+    IcebergTableState existingTable = table(identifier);
     if (existingTable == null) {
       return false;
     }
@@ -207,18 +209,22 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
 
     TableIdentifier to = NessieUtil.removeCatalogName(toOriginal, name());
 
-    IcebergSnapshot existingFromTable = table(from);
+    IcebergTableState existingFromTable = table(from);
     if (existingFromTable == null) {
       throw new NoSuchTableException("table %s doesn't exists", from.name());
     }
-    IcebergSnapshot existingToTable = table(to);
+    IcebergTableState existingToTable = table(to);
     if (existingToTable != null) {
       throw new AlreadyExistsException("table %s already exists", to.name());
     }
 
+    IcebergSnapshot newSnapshot = existingFromTable.extractRefState();
+    IcebergTable newGlobal = existingFromTable.extractGlobalState();
+
     Operations contents = ImmutableOperations.builder()
         .addOperations(
-            ImmutablePut.builder().key(NessieUtil.toKey(to)).contents(existingFromTable).build(),
+            ImmutablePut.builder().key(NessieUtil.toKey(to)).contents(newSnapshot).build(),
+            ImmutablePutGlobal.builder().key(NessieUtil.toKey(to)).contents(newGlobal).expectedState(newGlobal).build(),
             ImmutableDelete.builder().key(NessieUtil.toKey(from)).build())
         .commitMeta(NessieUtil.buildCommitMetadata("iceberg rename table", catalogOptions))
         .build();
@@ -334,11 +340,11 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
     return reference.getName();
   }
 
-  private IcebergSnapshot table(TableIdentifier tableIdentifier) {
+  private IcebergTableState table(TableIdentifier tableIdentifier) {
     try {
       Contents table = client.getContentsApi()
           .getContents(NessieUtil.toKey(tableIdentifier), reference.getName(), reference.getHash());
-      return table.unwrap(IcebergSnapshot.class).orElse(null);
+      return table.unwrap(IcebergTableState.class).orElse(null);
     } catch (NessieNotFoundException e) {
       return null;
     }
