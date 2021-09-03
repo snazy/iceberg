@@ -20,42 +20,44 @@
 package org.apache.iceberg.nessie;
 
 import java.util.Objects;
-import org.projectnessie.api.TreeApi;
+import org.projectnessie.client.api.NessieApiV1;
 import org.projectnessie.error.NessieNotFoundException;
 import org.projectnessie.model.Branch;
-import org.projectnessie.model.Hash;
 import org.projectnessie.model.Reference;
 
 class UpdateableReference {
 
   private Reference reference;
-  private final TreeApi client;
+  private final boolean mutable;
 
-  UpdateableReference(Reference reference, TreeApi client) {
+  /**
+   * Construct a new {@link UpdateableReference} using a Nessie reference object and a flag
+   * whether an explicit hash was used to create the reference object.
+   */
+  UpdateableReference(Reference reference, boolean hashReference) {
     this.reference = reference;
-    this.client = client;
+    this.mutable = reference instanceof Branch && !hashReference;
   }
 
-  public boolean refresh() throws NessieNotFoundException {
-    if (reference instanceof Hash) {
+  public boolean refresh(NessieApiV1 api) throws NessieNotFoundException {
+    if (!mutable) {
       return false;
     }
     Reference oldReference = reference;
-    reference = client.getReferenceByName(reference.getName());
+    reference = api.getReference().refName(reference.getName()).get();
     return !oldReference.equals(reference);
   }
 
   public void updateReference(Reference ref) {
+    if (!mutable) {
+      throw new IllegalStateException("Hash references cannot be updated.");
+    }
     Objects.requireNonNull(ref);
     this.reference = ref;
   }
 
   public boolean isBranch() {
     return reference instanceof Branch;
-  }
-
-  public UpdateableReference copy() {
-    return new UpdateableReference(reference, client);
   }
 
   public String getHash() {
@@ -69,9 +71,14 @@ class UpdateableReference {
     return (Branch) reference;
   }
 
+  public Reference getReference() {
+    return reference;
+  }
+
   public void checkMutable() {
-    if (!isBranch()) {
-      throw new IllegalArgumentException("You can only mutate tables when using a branch.");
+    if (!mutable) {
+      throw new IllegalArgumentException(
+          "You can only mutate tables when using a branch without a hash or timestamp.");
     }
   }
 

@@ -551,10 +551,13 @@ project(':iceberg-nessie') {
     implementation project(':iceberg-core')
     implementation project(path: ':iceberg-bundled-guava', configuration: 'shadow')
     implementation "org.projectnessie:nessie-client"
+    implementation "com.fasterxml.jackson.core:jackson-databind"
+    implementation "com.fasterxml.jackson.core:jackson-core"
 
     testImplementation "org.projectnessie:nessie-jaxrs-testextension"
     // Need to "pull in" el-api explicitly :(
     testImplementation "jakarta.el:jakarta.el-api"
+    testImplementation 'org.assertj:assertj-core'
 
     compileOnly "org.apache.hadoop:hadoop-common"
 
