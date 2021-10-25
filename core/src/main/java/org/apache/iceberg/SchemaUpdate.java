@@ -75,7 +75,7 @@ class SchemaUpdate implements UpdateSchema {
     this(null, null, schema, lastColumnId);
   }
 
-  private SchemaUpdate(TableOperations ops, TableMetadata base) {
+  SchemaUpdate(TableOperations ops, TableMetadata base) {
     this(ops, base, base.schema(), base.lastColumnId());
   }
 

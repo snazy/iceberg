@@ -338,6 +338,11 @@ public class SerializableTable implements Table, Serializable {
   }
 
   @Override
+  public MergeTable mergeTable() {
+    throw new UnsupportedOperationException(errorMsg("mergeTable"));
+  }
+
+  @Override
   public Transaction newTransaction() {
     throw new UnsupportedOperationException(errorMsg("newTransaction"));
   }

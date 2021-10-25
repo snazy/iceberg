@@ -96,6 +96,10 @@ class BaseSnapshot implements Snapshot {
     this.allManifests = dataManifests;
   }
 
+  public Snapshot withUpdatedSchemaId(int newSchemaId) {
+    return new BaseSnapshot(io, sequenceNumber, snapshotId, parentId, timestampMillis, operation, summary, newSchemaId, manifestListLocation);
+  }
+
   @Override
   public long sequenceNumber() {
     return sequenceNumber;

@@ -690,6 +690,11 @@ public class BaseTransaction implements Transaction {
     }
 
     @Override
+    public MergeTable mergeTable() {
+      throw new UnsupportedOperationException("Transaction tables do not support merging tables");
+    }
+
+    @Override
     public Transaction newTransaction() {
       throw new UnsupportedOperationException("Cannot create a transaction within a transaction");
     }

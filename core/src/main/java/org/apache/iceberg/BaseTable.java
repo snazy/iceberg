@@ -205,6 +205,11 @@ public class BaseTable implements Table, HasTableOperations, Serializable {
   }
 
   @Override
+  public MergeTable mergeTable() {
+    return new BaseMergeTable(name, ops);
+  }
+
+  @Override
   public Transaction newTransaction() {
     return Transactions.newTransaction(name, ops);
   }

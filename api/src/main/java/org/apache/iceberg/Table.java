@@ -180,6 +180,8 @@ public interface Table {
    */
   AppendFiles newAppend();
 
+  MergeTable mergeTable();
+
   /**
    * Create a new {@link AppendFiles append API} to add files to this table and commit.
    * <p>

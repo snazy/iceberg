@@ -234,6 +234,11 @@ abstract class BaseMetadataTable implements Table, HasTableOperations, Serializa
   }
 
   @Override
+  public MergeTable mergeTable() {
+    throw new UnsupportedOperationException("Cannot merge for a metadata table");
+  }
+
+  @Override
   public Transaction newTransaction() {
     throw new UnsupportedOperationException("Cannot create transactions for a metadata table");
   }
