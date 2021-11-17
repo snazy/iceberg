@@ -94,7 +94,7 @@ public class NessieTableOperations extends BaseMetastoreTableOperations {
     try {
       Content content = api.getContent().key(key).reference(reference.getReference()).get()
           .get(key);
-      LOG.info("Content '{}' at '{}': {}", key, reference.getReference(), content);
+      LOG.debug("Content '{}' at '{}': {}", key, reference.getReference(), content);
       if (content == null) {
         if (currentMetadataLocation() != null) {
           throw new NoSuchTableException("No such table %s in %s", key, reference.getReference());
@@ -136,10 +136,10 @@ public class NessieTableOperations extends BaseMetastoreTableOperations {
           .metadataLocation(newMetadataLocation)
           .build();
 
-      LOG.info("Committing '{}' against '{}': {}", key, reference.getReference(), newTable);
+      LOG.debug("Committing '{}' against '{}': {}", key, reference.getReference(), newTable);
       Branch branch = api.commitMultipleOperations()
           .operation(Operation.Put.of(key, newTable, table))
-          .commitMeta(NessieUtil.catalogOptions(buildCommitMessage(base, metadata), catalogOptions).build())
+          .commitMeta(NessieUtil.catalogOptions(buildCommitMeta(base, metadata), catalogOptions).build())
           .branch(reference.getAsBranch())
           .commit();
       reference.updateReference(branch);
@@ -165,7 +165,7 @@ public class NessieTableOperations extends BaseMetastoreTableOperations {
     }
   }
 
-  private ImmutableCommitMeta.Builder buildCommitMessage(TableMetadata base, TableMetadata metadata) {
+  private ImmutableCommitMeta.Builder buildCommitMeta(TableMetadata base, TableMetadata metadata) {
     ImmutableCommitMeta.Builder commitMeta = ImmutableCommitMeta.builder();
     String commitMessage;
     Snapshot snapshot = metadata.currentSnapshot();

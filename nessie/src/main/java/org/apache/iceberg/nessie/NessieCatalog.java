@@ -42,6 +42,7 @@ import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.hadoop.HadoopFileIO;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.relocated.com.google.common.base.Joiner;
+import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.util.Tasks;
 import org.projectnessie.client.NessieConfigConstants;
@@ -137,10 +138,8 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
   @Override
   protected TableOperations newTableOps(TableIdentifier tableIdentifier) {
     TableReference tr = TableReference.parse(tableIdentifier.name());
-    if (tr.hasTimestamp()) {
-      throw new IllegalArgumentException("Invalid table name:" +
-          " # is only allowed for hashes (reference by timestamp is not supported)");
-    }
+    Preconditions.checkArgument(!tr.hasTimestamp(), "Invalid table name: # is only allowed for hashes (reference by " +
+        "timestamp is not supported)");
     UpdateableReference newReference = this.reference;
     if (tr.getReference() != null) {
       newReference = loadReference(tr.getReference(), tr.getHash());
@@ -220,20 +219,20 @@ public class NessieCatalog extends BaseMetastoreCatalog implements AutoCloseable
       throw new AlreadyExistsException("table %s already exists", to.name());
     }
 
-    CommitMultipleOperationsBuilder op = api.commitMultipleOperations()
+    CommitMultipleOperationsBuilder operations = api.commitMultipleOperations()
         .commitMeta(NessieUtil.buildCommitMetadata(String.format("Iceberg rename table from '%s' to '%s'",
             from, to), catalogOptions))
         .operation(Operation.Put.of(NessieUtil.toKey(to), existingFromTable, existingFromTable))
         .operation(Operation.Delete.of(NessieUtil.toKey(from)));
 
     try {
-      Tasks.foreach(op)
+      Tasks.foreach(operations)
           .retry(5)
           .stopRetryOn(NessieNotFoundException.class)
           .throwFailureWhenFinished()
           .onFailure((o, exception) -> refresh())
-          .run(o -> {
-            Branch branch = o
+          .run(ops -> {
+            Branch branch = ops
                 .branch(reference.getAsBranch())
                 .commit();
             reference.updateReference(branch);

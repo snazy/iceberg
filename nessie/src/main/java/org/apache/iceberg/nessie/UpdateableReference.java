@@ -20,6 +20,7 @@
 package org.apache.iceberg.nessie;
 
 import java.util.Objects;
+import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.projectnessie.client.api.NessieApiV1;
 import org.projectnessie.error.NessieNotFoundException;
 import org.projectnessie.model.Branch;
@@ -49,11 +50,8 @@ class UpdateableReference {
   }
 
   public void updateReference(Reference ref) {
-    if (!mutable) {
-      throw new IllegalStateException("Hash references cannot be updated.");
-    }
-    Objects.requireNonNull(ref);
-    this.reference = ref;
+    Preconditions.checkState(mutable, "Hash references cannot be updated.");
+    this.reference = Objects.requireNonNull(ref);
   }
 
   public boolean isBranch() {
@@ -76,10 +74,7 @@ class UpdateableReference {
   }
 
   public void checkMutable() {
-    if (!mutable) {
-      throw new IllegalArgumentException(
-          "You can only mutate tables when using a branch without a hash or timestamp.");
-    }
+    Preconditions.checkArgument(mutable, "You can only mutate tables when using a branch without a hash or timestamp.");
   }
 
   public String getName() {
