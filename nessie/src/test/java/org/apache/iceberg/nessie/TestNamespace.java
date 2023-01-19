@@ -47,6 +47,14 @@ public class TestNamespace extends BaseTestIceberg {
 
   @Test
   public void testListNamespaces() {
+    // Nessie REST API v2 does not support Nessie's "implicit namespaces", the support for
+    // "implicit namespaces" will disappear when REST API v2 is in a final state.
+    catalog.createNamespace(Namespace.of("a"));
+    catalog.createNamespace(Namespace.of("a", "b"));
+    catalog.createNamespace(Namespace.of("a", "b", "c"));
+    catalog.createNamespace(Namespace.of("b"));
+    catalog.createNamespace(Namespace.of("b", "c"));
+
     createTable(TableIdentifier.parse("a.b.c.t1"));
     createTable(TableIdentifier.parse("a.b.t2"));
     createTable(TableIdentifier.parse("a.t3"));
