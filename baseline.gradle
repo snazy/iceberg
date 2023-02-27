@@ -49,7 +49,7 @@ subprojects {
     t.setReproducibleFileOrder(true);
     t.setDuplicatesStrategy(DuplicatesStrategy.WARN);
   });
-  apply plugin: 'com.palantir.baseline-exact-dependencies'
+  //apply plugin: 'com.palantir.baseline-exact-dependencies'
   // We need to update Google Java Format to 1.17.0+ to run spotless on JDK 8, but that requires dropping support for JDK 8.
   if (JavaVersion.current() == JavaVersion.VERSION_21) {
     task spotlessApply {
