@@ -22,11 +22,13 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.iceberg.exceptions.ValidationException;
@@ -254,6 +256,9 @@ public class TableMetadata implements Serializable {
   private final Map<Integer, Schema> schemasById;
   private final Map<Integer, PartitionSpec> specsById;
   private final Map<Integer, SortOrder> sortOrdersById;
+  private final int highestSchemaId;
+  private final int highestSpecId;
+  private final int highestSortOrderId;
   private final List<HistoryEntry> snapshotLog;
   private final List<MetadataLogEntry> previousFiles;
   private final List<StatisticsFile> statisticsFiles;
@@ -281,6 +286,9 @@ public class TableMetadata implements Serializable {
       int lastAssignedPartitionId,
       int defaultSortOrderId,
       List<SortOrder> sortOrders,
+      int highestSchemaId,
+      int highestSpecId,
+      int highestSortOrderId,
       Map<String, String> properties,
       long currentSnapshotId,
       List<Snapshot> snapshots,
@@ -330,6 +338,9 @@ public class TableMetadata implements Serializable {
     this.snapshotsLoaded = snapshotsSupplier == null;
     this.snapshotLog = snapshotLog;
     this.previousFiles = previousFiles;
+    this.highestSchemaId = highestId(highestSchemaId, schemas, Schema::schemaId);
+    this.highestSpecId = highestId(highestSpecId, specs, PartitionSpec::specId);
+    this.highestSortOrderId = highestId(highestSortOrderId, sortOrders, SortOrder::orderId);
 
     // changes are carried through until metadata is read from a file
     this.changes = changes;
@@ -384,6 +395,11 @@ public class TableMetadata implements Serializable {
     }
 
     validateCurrentSnapshot();
+  }
+
+  private static <E> int highestId(int last, List<E> elems, ToIntFunction<E> id) {
+    OptionalInt max = elems.stream().mapToInt(id).max();
+    return max.isPresent() ? Math.max(last, max.getAsInt()) : last;
   }
 
   public int formatVersion() {
@@ -468,6 +484,18 @@ public class TableMetadata implements Serializable {
 
   public Map<Integer, SortOrder> sortOrdersById() {
     return sortOrdersById;
+  }
+
+  public int highestSchemaId() {
+    return highestSchemaId;
+  }
+
+  public int highestSpecId() {
+    return highestSpecId;
+  }
+
+  public int highestSortOrderId() {
+    return highestSortOrderId;
   }
 
   public String location() {
@@ -894,6 +922,9 @@ public class TableMetadata implements Serializable {
     private Integer lastAddedSchemaId = null;
     private Integer lastAddedSpecId = null;
     private Integer lastAddedOrderId = null;
+    private int highestSchemaId;
+    private int highestSpecId;
+    private int highestOrderId;
 
     // handled in build
     private final List<HistoryEntry> snapshotLog;
@@ -928,6 +959,9 @@ public class TableMetadata implements Serializable {
       this.schemasById = Maps.newHashMap();
       this.specsById = Maps.newHashMap();
       this.sortOrdersById = Maps.newHashMap();
+      this.highestSchemaId = INITIAL_SCHEMA_ID - 1;
+      this.highestSpecId = INITIAL_SPEC_ID - 1;
+      this.highestOrderId = INITIAL_SORT_ORDER_ID - 1;
     }
 
     private Builder(TableMetadata base) {
@@ -950,6 +984,9 @@ public class TableMetadata implements Serializable {
       this.snapshots = Lists.newArrayList(base.snapshots());
       this.changes = Lists.newArrayList(base.changes);
       this.startingChangeCount = changes.size();
+      this.highestSchemaId = base.highestSchemaId;
+      this.highestSpecId = base.highestSpecId;
+      this.highestOrderId = base.highestSortOrderId;
 
       this.snapshotLog = Lists.newArrayList(base.snapshotLog);
       this.previousFileLocation = base.metadataFileLocation;
@@ -1459,6 +1496,9 @@ public class TableMetadata implements Serializable {
           lastAssignedPartitionId,
           defaultSortOrderId,
           ImmutableList.copyOf(sortOrders),
+          highestSchemaId,
+          highestSpecId,
+          highestOrderId,
           ImmutableMap.copyOf(properties),
           currentSnapshotId,
           ImmutableList.copyOf(snapshots),
@@ -1511,21 +1551,19 @@ public class TableMetadata implements Serializable {
       changes.add(new MetadataUpdate.AddSchema(newSchema, lastColumnId));
 
       this.lastAddedSchemaId = newSchemaId;
+      this.highestSchemaId = Math.max(newSchemaId, this.highestSchemaId);
 
       return newSchemaId;
     }
 
     private int reuseOrCreateNewSchemaId(Schema newSchema) {
       // if the schema already exists, use its id; otherwise use the highest id + 1
-      int newSchemaId = currentSchemaId;
       for (Schema schema : schemas) {
         if (schema.sameSchema(newSchema)) {
           return schema.schemaId();
-        } else if (schema.schemaId() >= newSchemaId) {
-          newSchemaId = schema.schemaId() + 1;
         }
       }
-      return newSchemaId;
+      return Math.max(highestSchemaId + 1, currentSchemaId);
     }
 
     private int addPartitionSpecInternal(PartitionSpec spec) {
@@ -1557,22 +1595,20 @@ public class TableMetadata implements Serializable {
       changes.add(new MetadataUpdate.AddPartitionSpec(newSpec));
 
       this.lastAddedSpecId = newSpecId;
+      this.highestSpecId = Math.max(newSpecId, this.highestSpecId);
 
       return newSpecId;
     }
 
     private int reuseOrCreateNewSpecId(PartitionSpec newSpec) {
       // if the spec already exists, use the same ID. otherwise, use 1 more than the highest ID.
-      int newSpecId = INITIAL_SPEC_ID;
       for (PartitionSpec spec : specs) {
         if (newSpec.compatibleWith(spec)) {
           return spec.specId();
-        } else if (newSpecId <= spec.specId()) {
-          newSpecId = spec.specId() + 1;
         }
       }
 
-      return newSpecId;
+      return highestSpecId + 1;
     }
 
     private int addSortOrderInternal(SortOrder order) {
@@ -1605,6 +1641,9 @@ public class TableMetadata implements Serializable {
       changes.add(new MetadataUpdate.AddSortOrder(newOrder));
 
       this.lastAddedOrderId = newOrderId;
+      if (newOrderId != 0) {
+        this.highestOrderId = Math.max(newOrderId, this.highestOrderId);
+      }
 
       return newOrderId;
     }
@@ -1614,17 +1653,14 @@ public class TableMetadata implements Serializable {
         return SortOrder.unsorted().orderId();
       }
 
-      // determine the next order id
-      int newOrderId = INITIAL_SORT_ORDER_ID;
+      // determine the whether an existing sort-order matches newOrder
       for (SortOrder order : sortOrders) {
         if (order.sameOrder(newOrder)) {
           return order.orderId();
-        } else if (newOrderId <= order.orderId()) {
-          newOrderId = order.orderId() + 1;
         }
       }
 
-      return newOrderId;
+      return highestOrderId + 1;
     }
 
     private void setBranchSnapshotInternal(Snapshot snapshot, String branch) {

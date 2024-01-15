@@ -32,6 +32,9 @@ import static org.apache.iceberg.TestHelpers.assertSameSchemaList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringWriter;
@@ -53,11 +56,14 @@ import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
+import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.transforms.Transforms;
 import org.apache.iceberg.types.Types;
+import org.apache.iceberg.types.Types.IntegerType;
+import org.apache.iceberg.types.Types.NestedField;
 import org.apache.iceberg.util.JsonUtil;
 import org.assertj.core.api.Assertions;
 import org.junit.Assert;
@@ -170,6 +176,9 @@ public class TestTableMetadata {
             SPEC_5.lastAssignedFieldId(),
             3,
             ImmutableList.of(SORT_ORDER_3),
+            Math.max(TEST_SCHEMA.schemaId(), schema.schemaId()),
+            SPEC_5.specId(),
+            SORT_ORDER_3.orderId(),
             ImmutableMap.of("property", "value"),
             currentSnapshotId,
             Arrays.asList(previousSnapshot, currentSnapshot),
@@ -213,6 +222,16 @@ public class TestTableMetadata {
     Assert.assertEquals("Sort order should match", expected.sortOrder(), metadata.sortOrder());
     Assert.assertEquals(
         "Sort order map should match", expected.sortOrders(), metadata.sortOrders());
+    Assert.assertEquals(
+        "Last added schema ID should match",
+        expected.highestSchemaId(),
+        metadata.highestSchemaId());
+    Assert.assertEquals(
+        "Last added spec ID should match", expected.highestSpecId(), metadata.highestSpecId());
+    Assert.assertEquals(
+        "Last added sort order ID should match",
+        expected.highestSortOrderId(),
+        metadata.highestSortOrderId());
     Assert.assertEquals("Properties should match", expected.properties(), metadata.properties());
     Assert.assertEquals(
         "Snapshot logs should match", expected.snapshotLog(), metadata.snapshotLog());
@@ -297,6 +316,9 @@ public class TestTableMetadata {
             spec.lastAssignedFieldId(),
             TableMetadata.INITIAL_SORT_ORDER_ID,
             ImmutableList.of(sortOrder),
+            0, // schema-id is not serialized in "backwards compatible format"
+            0, // spec-id is not serialized in "backwards compatible format"
+            0, // sort-order
             ImmutableMap.of("property", "value"),
             currentSnapshotId,
             Arrays.asList(previousSnapshot, currentSnapshot),
@@ -345,6 +367,9 @@ public class TestTableMetadata {
         "PartitionSpec should have ID TableMetadata.INITIAL_SPEC_ID",
         TableMetadata.INITIAL_SPEC_ID,
         metadata.specs().get(0).specId());
+    Assert.assertEquals("Highest schema ID should match", 0, metadata.highestSchemaId());
+    Assert.assertEquals("Highest spec ID should match", 0, metadata.highestSpecId());
+    Assert.assertEquals("Highest sort order ID should match", 0, metadata.highestSortOrderId());
     Assert.assertEquals(
         "lastAssignedFieldId across all PartitionSpecs should match",
         expected.spec().lastAssignedFieldId(),
@@ -439,6 +464,9 @@ public class TestTableMetadata {
                     SPEC_5.lastAssignedFieldId(),
                     3,
                     ImmutableList.of(SORT_ORDER_3),
+                    TableMetadata.INITIAL_SCHEMA_ID,
+                    TableMetadata.INITIAL_SPEC_ID,
+                    TableMetadata.INITIAL_SORT_ORDER_ID,
                     ImmutableMap.of("property", "value"),
                     currentSnapshotId,
                     Arrays.asList(previousSnapshot, currentSnapshot),
@@ -484,6 +512,9 @@ public class TestTableMetadata {
                     SPEC_5.lastAssignedFieldId(),
                     3,
                     ImmutableList.of(SORT_ORDER_3),
+                    TableMetadata.INITIAL_SCHEMA_ID,
+                    TableMetadata.INITIAL_SPEC_ID,
+                    TableMetadata.INITIAL_SORT_ORDER_ID,
                     ImmutableMap.of("property", "value"),
                     -1,
                     ImmutableList.of(snapshot),
@@ -524,6 +555,9 @@ public class TestTableMetadata {
                     SPEC_5.lastAssignedFieldId(),
                     3,
                     ImmutableList.of(SORT_ORDER_3),
+                    TableMetadata.INITIAL_SCHEMA_ID,
+                    TableMetadata.INITIAL_SPEC_ID,
+                    TableMetadata.INITIAL_SORT_ORDER_ID,
                     ImmutableMap.of("property", "value"),
                     -1,
                     ImmutableList.of(),
@@ -628,6 +662,9 @@ public class TestTableMetadata {
             SPEC_5.lastAssignedFieldId(),
             3,
             ImmutableList.of(SORT_ORDER_3),
+            TableMetadata.INITIAL_SCHEMA_ID,
+            TableMetadata.INITIAL_SPEC_ID,
+            TableMetadata.INITIAL_SORT_ORDER_ID,
             ImmutableMap.of("property", "value"),
             currentSnapshotId,
             Arrays.asList(previousSnapshot, currentSnapshot),
@@ -708,6 +745,9 @@ public class TestTableMetadata {
             SPEC_5.lastAssignedFieldId(),
             3,
             ImmutableList.of(SORT_ORDER_3),
+            TableMetadata.INITIAL_SCHEMA_ID,
+            TableMetadata.INITIAL_SPEC_ID,
+            TableMetadata.INITIAL_SORT_ORDER_ID,
             ImmutableMap.of("property", "value"),
             currentSnapshotId,
             Arrays.asList(previousSnapshot, currentSnapshot),
@@ -806,6 +846,9 @@ public class TestTableMetadata {
             SPEC_5.lastAssignedFieldId(),
             3,
             ImmutableList.of(SORT_ORDER_3),
+            TableMetadata.INITIAL_SCHEMA_ID,
+            TableMetadata.INITIAL_SPEC_ID,
+            TableMetadata.INITIAL_SORT_ORDER_ID,
             ImmutableMap.of("property", "value"),
             currentSnapshotId,
             Arrays.asList(previousSnapshot, currentSnapshot),
@@ -910,6 +953,9 @@ public class TestTableMetadata {
             SPEC_5.lastAssignedFieldId(),
             SortOrder.unsorted().orderId(),
             ImmutableList.of(SortOrder.unsorted()),
+            TableMetadata.INITIAL_SCHEMA_ID,
+            TableMetadata.INITIAL_SPEC_ID,
+            TableMetadata.INITIAL_SORT_ORDER_ID,
             ImmutableMap.of("property", "value"),
             currentSnapshotId,
             Arrays.asList(previousSnapshot, currentSnapshot),
@@ -959,6 +1005,9 @@ public class TestTableMetadata {
                     SPEC_5.lastAssignedFieldId(),
                     3,
                     ImmutableList.of(SORT_ORDER_3),
+                    TableMetadata.INITIAL_SCHEMA_ID,
+                    TableMetadata.INITIAL_SPEC_ID,
+                    TableMetadata.INITIAL_SORT_ORDER_ID,
                     ImmutableMap.of(),
                     -1L,
                     ImmutableList.of(),
@@ -993,6 +1042,9 @@ public class TestTableMetadata {
                     SPEC_5.lastAssignedFieldId(),
                     3,
                     ImmutableList.of(SORT_ORDER_3),
+                    TableMetadata.INITIAL_SCHEMA_ID,
+                    TableMetadata.INITIAL_SPEC_ID,
+                    TableMetadata.INITIAL_SORT_ORDER_ID,
                     ImmutableMap.of(),
                     -1L,
                     ImmutableList.of(),
@@ -1231,17 +1283,23 @@ public class TestTableMetadata {
         "Should be nulls first",
         NullOrder.NULLS_FIRST,
         sortedByX.sortOrder().fields().get(0).nullOrder());
+    Assert.assertEquals(
+        "Should return expected last sort-order id", 1, sortedByX.highestSortOrderId());
 
     // build an equivalent order with the correct schema
     SortOrder newOrder = SortOrder.builderFor(sortedByX.schema()).asc("x").build();
 
     TableMetadata alsoSortedByX = sortedByX.replaceSortOrder(newOrder);
     Assert.assertSame("Should detect current sortOrder and not update", alsoSortedByX, sortedByX);
+    Assert.assertEquals(
+        "Should return expected last sort-order id", 1, alsoSortedByX.highestSortOrderId());
 
     TableMetadata unsorted = alsoSortedByX.replaceSortOrder(SortOrder.unsorted());
     Assert.assertEquals("Should have 2 sort orders", 2, unsorted.sortOrders().size());
     Assert.assertEquals("Should use orderId 0", 0, unsorted.sortOrder().orderId());
     Assert.assertTrue("Should be unsorted", unsorted.sortOrder().isUnsorted());
+    Assert.assertEquals(
+        "Should return expected last sort-order id", 1, unsorted.highestSortOrderId());
 
     TableMetadata sortedByXDesc =
         unsorted.replaceSortOrder(SortOrder.builderFor(unsorted.schema()).desc("x").build());
@@ -1261,6 +1319,8 @@ public class TestTableMetadata {
         "Should be nulls first",
         NullOrder.NULLS_FIRST,
         sortedByX.sortOrder().fields().get(0).nullOrder());
+    Assert.assertEquals(
+        "Should return expected last sort-order id", 2, sortedByXDesc.highestSortOrderId());
   }
 
   @Test
@@ -1510,6 +1570,10 @@ public class TestTableMetadata {
         schema.asStruct(),
         freshTable.schema().asStruct());
     Assert.assertEquals("Should return expected last column id", 1, freshTable.lastColumnId());
+    Assert.assertEquals(
+        "Should return expected last schema id",
+        freshTable.currentSchemaId(),
+        freshTable.highestSchemaId());
 
     // update schema
     Schema schema2 =
@@ -1525,6 +1589,8 @@ public class TestTableMetadata {
         schema2.asStruct(),
         twoSchemasTable.schema().asStruct());
     Assert.assertEquals("Should return expected last column id", 2, twoSchemasTable.lastColumnId());
+    Assert.assertEquals(
+        "Should return expected last schema id", 1, twoSchemasTable.highestSchemaId());
 
     // update schema with the same schema and last column ID as current shouldn't cause change
     Schema sameSchema2 =
@@ -1548,6 +1614,8 @@ public class TestTableMetadata {
         differentColumnIdTable.schema().asStruct());
     Assert.assertEquals(
         "Should return expected last column id", 3, differentColumnIdTable.lastColumnId());
+    Assert.assertEquals(
+        "Should return expected last schema id", 1, differentColumnIdTable.highestSchemaId());
 
     // update schema with old schema does not change schemas
     TableMetadata revertSchemaTable = differentColumnIdTable.updateSchema(schema, 3);
@@ -1561,6 +1629,8 @@ public class TestTableMetadata {
         revertSchemaTable.schema().asStruct());
     Assert.assertEquals(
         "Should return expected last column id", 3, revertSchemaTable.lastColumnId());
+    Assert.assertEquals(
+        "Should return expected last schema id", 1, revertSchemaTable.highestSchemaId());
 
     // create new schema will use the largest schema id + 1
     Schema schema3 =
@@ -1581,6 +1651,8 @@ public class TestTableMetadata {
         threeSchemaTable.schema().asStruct());
     Assert.assertEquals(
         "Should return expected last column id", 6, threeSchemaTable.lastColumnId());
+    Assert.assertEquals(
+        "Should return expected last schema id", 2, threeSchemaTable.highestSchemaId());
   }
 
   @Test
@@ -1727,6 +1799,91 @@ public class TestTableMetadata {
         "Metadata should never return a location ending in a slash",
         locationWithoutSlash,
         meta.location());
+  }
+
+  @Test
+  public void testHighestIds() throws Exception {
+    TableMetadata meta =
+        TableMetadata.newTableMetadata(
+            TEST_SCHEMA, SPEC_5, SORT_ORDER_3, "/here", Collections.emptyMap());
+
+    assertThat(meta)
+        .extracting(
+            TableMetadata::highestSchemaId,
+            tm -> tm.schemasById().keySet(),
+            TableMetadata::highestSpecId,
+            tm -> tm.specsById().keySet(),
+            TableMetadata::highestSortOrderId,
+            tm -> tm.sortOrdersById().keySet())
+        .containsExactly(
+            // schema-id
+            0,
+            ImmutableSet.of(0),
+            // spec-id
+            0,
+            ImmutableSet.of(0),
+            // order-id
+            1,
+            ImmutableSet.of(1));
+
+    ObjectNode metaJson =
+        (ObjectNode) new ObjectMapper().readValue(TableMetadataParser.toJson(meta), JsonNode.class);
+    metaJson
+        .put(TableMetadataParser.HIGHEST_SCHEMA_ID, 5)
+        .put(TableMetadataParser.HIGHEST_SPEC_ID, 10)
+        .put(TableMetadataParser.HIGHEST_SORT_ORDER_ID, 15);
+    TableMetadata bumpHighest = TableMetadataParser.fromJson(metaJson);
+    assertThat(bumpHighest)
+        .extracting(
+            TableMetadata::highestSchemaId,
+            tm -> tm.schemasById().keySet(),
+            TableMetadata::highestSpecId,
+            tm -> tm.specsById().keySet(),
+            TableMetadata::highestSortOrderId,
+            tm -> tm.sortOrdersById().keySet())
+        .containsExactly(
+            // schema-id
+            5,
+            ImmutableSet.of(0),
+            // spec-id
+            10,
+            ImmutableSet.of(0),
+            // order-id
+            15,
+            ImmutableSet.of(1));
+
+    TableMetadata updated =
+        TableMetadata.buildFrom(bumpHighest)
+            .addSchema(
+                new Schema(
+                    NestedField.required(bumpHighest.lastColumnId() + 1, "foo", IntegerType.get())),
+                bumpHighest.lastColumnId() + 1)
+            .addPartitionSpec(
+                PartitionSpec.builderFor(TEST_SCHEMA).add(2, "bar", Transforms.identity()).build())
+            .addSortOrder(
+                SortOrder.builderFor(TEST_SCHEMA)
+                    .sortBy("x", SortDirection.ASC, NullOrder.NULLS_FIRST)
+                    .build())
+            .build();
+
+    assertThat(updated)
+        .extracting(
+            TableMetadata::highestSchemaId,
+            tm -> tm.schemasById().keySet(),
+            TableMetadata::highestSpecId,
+            tm -> tm.specsById().keySet(),
+            TableMetadata::highestSortOrderId,
+            tm -> tm.sortOrdersById().keySet())
+        .containsExactly(
+            // schema-id
+            6,
+            ImmutableSet.of(0, 6),
+            // spec-id
+            11,
+            ImmutableSet.of(0, 11),
+            // order-id
+            16,
+            ImmutableSet.of(1, 16));
   }
 
   private String createManifestListWithManifestFile(

@@ -99,6 +99,9 @@ public class TableMetadataParser {
   static final String LAST_PARTITION_ID = "last-partition-id";
   static final String DEFAULT_SORT_ORDER_ID = "default-sort-order-id";
   static final String SORT_ORDERS = "sort-orders";
+  static final String HIGHEST_SCHEMA_ID = "highest-schema-id";
+  static final String HIGHEST_SPEC_ID = "highest-spec-id";
+  static final String HIGHEST_SORT_ORDER_ID = "highest-sort-order-id";
   static final String PROPERTIES = "properties";
   static final String CURRENT_SNAPSHOT_ID = "current-snapshot-id";
   static final String REFS = "refs";
@@ -210,6 +213,16 @@ public class TableMetadataParser {
       SortOrderParser.toJson(sortOrder, generator);
     }
     generator.writeEndArray();
+
+    if (metadata.highestSchemaId() != TableMetadata.INITIAL_SCHEMA_ID - 1) {
+      generator.writeNumberField(HIGHEST_SCHEMA_ID, metadata.highestSchemaId());
+    }
+    if (metadata.highestSpecId() != TableMetadata.INITIAL_SPEC_ID - 1) {
+      generator.writeNumberField(HIGHEST_SPEC_ID, metadata.highestSpecId());
+    }
+    if (metadata.highestSortOrderId() != TableMetadata.INITIAL_SORT_ORDER_ID - 1) {
+      generator.writeNumberField(HIGHEST_SORT_ORDER_ID, metadata.highestSortOrderId());
+    }
 
     // write properties map
     JsonUtil.writeStringMap(PROPERTIES, metadata.properties(), generator);
@@ -340,6 +353,7 @@ public class TableMetadataParser {
     Schema schema = null;
 
     JsonNode schemaArray = node.get(SCHEMAS);
+    int highestSchemaId = 0;
     if (schemaArray != null) {
       Preconditions.checkArgument(
           schemaArray.isArray(), "Cannot parse schemas from non-array: %s", schemaArray);
@@ -354,6 +368,7 @@ public class TableMetadataParser {
           schema = current;
         }
         builder.add(current);
+        highestSchemaId = Math.max(highestSchemaId, current.schemaId());
       }
 
       Preconditions.checkArgument(
@@ -370,13 +385,14 @@ public class TableMetadataParser {
           formatVersion == 1, "%s must exist in format v%s", SCHEMAS, formatVersion);
 
       schema = SchemaParser.fromJson(JsonUtil.get(SCHEMA, node));
-      currentSchemaId = schema.schemaId();
+      highestSchemaId = currentSchemaId = schema.schemaId();
       schemas = ImmutableList.of(schema);
     }
 
     JsonNode specArray = node.get(PARTITION_SPECS);
     List<PartitionSpec> specs;
     int defaultSpecId;
+    int highestSpecId = 0;
     if (specArray != null) {
       Preconditions.checkArgument(
           specArray.isArray(), "Cannot parse partition specs from non-array: %s", specArray);
@@ -392,6 +408,7 @@ public class TableMetadataParser {
         } else {
           builder.add(unboundSpec.bindUnchecked(schema));
         }
+        highestSpecId = Math.max(highestSpecId, unboundSpec.specId());
       }
       specs = builder.build();
 
@@ -423,11 +440,14 @@ public class TableMetadataParser {
     JsonNode sortOrderArray = node.get(SORT_ORDERS);
     List<SortOrder> sortOrders;
     int defaultSortOrderId;
+    int highestSortOrderId = 0;
     if (sortOrderArray != null) {
       defaultSortOrderId = JsonUtil.getInt(DEFAULT_SORT_ORDER_ID, node);
       ImmutableList.Builder<SortOrder> sortOrdersBuilder = ImmutableList.builder();
       for (JsonNode sortOrder : sortOrderArray) {
-        sortOrdersBuilder.add(SortOrderParser.fromJson(schema, sortOrder, defaultSortOrderId));
+        SortOrder order = SortOrderParser.fromJson(schema, sortOrder, defaultSortOrderId);
+        sortOrdersBuilder.add(order);
+        highestSortOrderId = Math.max(highestSortOrderId, order.orderId());
       }
       sortOrders = sortOrdersBuilder.build();
     } else {
@@ -435,7 +455,20 @@ public class TableMetadataParser {
           formatVersion == 1, "%s must exist in format v%s", SORT_ORDERS, formatVersion);
       SortOrder defaultSortOrder = SortOrder.unsorted();
       sortOrders = ImmutableList.of(defaultSortOrder);
-      defaultSortOrderId = defaultSortOrder.orderId();
+      highestSortOrderId = defaultSortOrderId = defaultSortOrder.orderId();
+    }
+
+    Integer parsedHighestSchemaId = JsonUtil.getIntOrNull(HIGHEST_SCHEMA_ID, node);
+    if (parsedHighestSchemaId != null) {
+      highestSchemaId = Math.max(highestSchemaId, parsedHighestSchemaId);
+    }
+    Integer parsedHighestSpecId = JsonUtil.getIntOrNull(HIGHEST_SPEC_ID, node);
+    if (parsedHighestSpecId != null) {
+      highestSpecId = Math.max(highestSpecId, parsedHighestSpecId);
+    }
+    Integer parsedHighestSortOrderId = JsonUtil.getIntOrNull(HIGHEST_SORT_ORDER_ID, node);
+    if (parsedHighestSortOrderId != null) {
+      highestSortOrderId = Math.max(highestSortOrderId, parsedHighestSortOrderId);
     }
 
     Map<String, String> properties;
@@ -534,6 +567,9 @@ public class TableMetadataParser {
         lastAssignedPartitionId,
         defaultSortOrderId,
         sortOrders,
+        highestSchemaId,
+        highestSpecId,
+        highestSortOrderId,
         properties,
         currentSnapshotId,
         snapshots,

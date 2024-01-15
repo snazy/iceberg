@@ -668,6 +668,9 @@ Table metadata consists of the following fields:
 | _optional_ | _required_ | **`default-sort-order-id`**| Default sort order id of the table. Note that this could be used by writers, but is not used when reading because reads use the specs stored in manifest files. |
 |            | _optional_ | **`refs`** | A map of snapshot references. The map keys are the unique snapshot reference names in the table, and the map values are snapshot reference objects. There is always a `main` branch reference pointing to the `current-snapshot-id` even if the `refs` map is null. |
 | _optional_ | _optional_ | **`statistics`** | A list (optional) of [table statistics](#table-statistics). |
+| _optional_ | _optional_ | **`highest-schema-id`** | The highest used schema ID. |
+| _optional_ | _optional_ | **`highest-spec-id`** | The highest used partition spec ID. |
+| _optional_ | _optional_ | **`highest-sort-order-id`** | The highest used sort-order ID. |
 
 For serialization details, see Appendix C.
 
