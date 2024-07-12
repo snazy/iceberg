@@ -57,6 +57,7 @@ jackson213 = { strictly = "2.13.4"}
 jackson214 = { strictly = "2.14.2"}
 jackson215 = { strictly = "2.15.2"}
 jakarta-el-api = "3.0.3"
+jandex = "3.2.0"
 jaxb-api = "2.3.1"
 jaxb-runtime = "2.3.9"
 jetty = "9.4.55.v20240627"
@@ -152,6 +153,7 @@ jackson212-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "
 jackson213-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref =  "jackson213" }
 jackson214-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref =  "jackson214" }
 jackson215-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson215" }
+jandex = { module = "io.smallrye:jandex", version.ref = "jandex" }
 jaxb-api = { module = "javax.xml.bind:jaxb-api", version.ref = "jaxb-api" }
 jaxb-runtime = { module = "org.glassfish.jaxb:jaxb-runtime", version.ref = "jaxb-runtime" }
 kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }

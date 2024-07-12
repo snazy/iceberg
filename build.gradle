@@ -42,6 +42,7 @@ buildscript {
     classpath 'com.gorylenko.gradle-git-properties:gradle-git-properties:2.4.2'
     classpath 'com.palantir.gradle.gitversion:gradle-git-version:3.1.0'
     classpath 'org.openapitools:openapi-generator-gradle-plugin:6.6.0'
+    classpath "com.github.vlsi.gradle:jandex-plugin:1.90"
   }
 }
 
@@ -137,6 +138,21 @@ subprojects {
   }
 
   apply plugin: 'java-library'
+  apply plugin: 'java-test-fixtures'
+  apply plugin: 'com.github.vlsi.jandex'
+
+  // Do not publish test fixtures via Maven. Shared, reusable test code should be published as
+  // a separate project to retain dependency information.
+  components {
+    named("java", AdhocComponentWithVariants.class) {
+      withVariantsFromConfiguration(configurations["testFixturesApiElements"]) { skip() }
+      withVariantsFromConfiguration(configurations["testFixturesRuntimeElements"]) { skip() }
+    }
+  }
+
+  tasks.named("processTestJandexIndex").configure {
+    enabled = false;
+  }
 
   if (project.name in REVAPI_PROJECTS) {
     apply plugin: 'org.revapi.revapi-gradle-plugin'
@@ -358,6 +374,7 @@ project(':iceberg-core') {
     implementation libs.jackson.databind
     implementation libs.caffeine
     implementation libs.roaringbitmap
+    implementation libs.jandex
     compileOnly(libs.hadoop2.client) {
       exclude group: 'org.apache.avro', module: 'avro'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'

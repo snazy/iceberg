@@ -80,8 +80,7 @@ public class TestCatalogUtil {
                     TestCatalogBadConstructor.class.getName(), name, options, hadoopConf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageStartingWith("Cannot initialize Catalog implementation")
-        .hasMessageContaining(
-            "NoSuchMethodException: org.apache.iceberg.TestCatalogUtil$TestCatalogBadConstructor.<init>()");
+        .hasMessageContaining("Cannot find constructor");
   }
 
   @Test
@@ -97,7 +96,7 @@ public class TestCatalogUtil {
                     TestCatalogNoInterface.class.getName(), name, options, hadoopConf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageStartingWith("Cannot initialize Catalog")
-        .hasMessageContaining("does not implement Catalog");
+        .hasMessageContaining("cannot be cast to class org.apache.iceberg.catalog.Catalog");
   }
 
   @Test
@@ -111,7 +110,7 @@ public class TestCatalogUtil {
     assertThatThrownBy(() -> CatalogUtil.loadCatalog(impl, name, options, hadoopConf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageStartingWith("Cannot initialize Catalog implementation")
-        .hasMessageContaining("NoClassDefFoundError: Error while initializing class");
+        .hasMessageContaining("Could not initialize class ");
   }
 
   @Test
@@ -123,8 +122,7 @@ public class TestCatalogUtil {
     String impl = "CatalogDoesNotExist";
     assertThatThrownBy(() -> CatalogUtil.loadCatalog(impl, name, options, hadoopConf))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageStartingWith("Cannot initialize Catalog implementation")
-        .hasMessageContaining("java.lang.ClassNotFoundException: CatalogDoesNotExist");
+        .hasMessageStartingWith("No Catalog service matching the given criteria:");
   }
 
   @Test
@@ -174,7 +172,7 @@ public class TestCatalogUtil {
                 CatalogUtil.loadFileIO(TestFileIONotImpl.class.getName(), Maps.newHashMap(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageStartingWith("Cannot initialize FileIO")
-        .hasMessageContaining("does not implement FileIO");
+        .hasMessageContaining("cannot be cast to class org.apache.iceberg.io.FileIO");
   }
 
   @Test

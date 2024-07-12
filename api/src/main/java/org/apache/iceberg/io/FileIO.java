@@ -25,6 +25,7 @@ import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.services.WithProperties;
 
 /**
  * Pluggable module for reading, writing, and deleting files.
@@ -33,7 +34,7 @@ import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
  * Implementations must be serializable because various clients of Spark tables may initialize this
  * once and pass it off to a separate module that would then interact with the streams.
  */
-public interface FileIO extends Serializable, Closeable {
+public interface FileIO extends Serializable, Closeable, WithProperties {
 
   /** Get a {@link InputFile} instance to read bytes from the file at the given path. */
   InputFile newInputFile(String path);
@@ -102,6 +103,7 @@ public interface FileIO extends Serializable, Closeable {
    *
    * @param properties catalog properties
    */
+  @Override
   default void initialize(Map<String, String> properties) {}
 
   /**

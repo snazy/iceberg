@@ -271,8 +271,8 @@ public class TestCatalogs {
         "fooType");
 
     assertThatThrownBy(() -> Catalogs.loadCatalog(conf, catalogName))
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessage("Unknown catalog type: fooType");
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageStartingWith("No Catalog service matching the given criteria:");
   }
 
   public static class CustomHadoopCatalog extends HadoopCatalog {

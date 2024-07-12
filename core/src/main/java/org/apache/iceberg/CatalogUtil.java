@@ -20,6 +20,7 @@ package org.apache.iceberg;
 
 import static org.apache.iceberg.TableProperties.GC_ENABLED;
 import static org.apache.iceberg.TableProperties.GC_ENABLED_DEFAULT;
+import static org.apache.iceberg.services.ServiceProvider.newServiceProvider;
 
 import java.io.IOException;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.apache.iceberg.catalog.Catalog;
+import org.apache.iceberg.catalog.CatalogService;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.common.DynClasses;
 import org.apache.iceberg.common.DynConstructors;
@@ -35,6 +37,7 @@ import org.apache.iceberg.exceptions.RuntimeIOException;
 import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.hadoop.Configurable;
 import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.FileIOService;
 import org.apache.iceberg.io.SupportsBulkOperations;
 import org.apache.iceberg.metrics.LoggingMetricsReporter;
 import org.apache.iceberg.metrics.MetricsReporter;
@@ -44,6 +47,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.MapMaker;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
+import org.apache.iceberg.services.ServiceProvider;
 import org.apache.iceberg.util.PropertyUtil;
 import org.apache.iceberg.util.Tasks;
 import org.apache.iceberg.util.ThreadPools;
@@ -51,6 +55,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class CatalogUtil {
+
   private static final Logger LOG = LoggerFactory.getLogger(CatalogUtil.class);
 
   /**
@@ -233,22 +238,17 @@ public class CatalogUtil {
   public static Catalog loadCatalog(
       String impl, String catalogName, Map<String, String> properties, Object hadoopConf) {
     Preconditions.checkNotNull(impl, "Cannot initialize custom Catalog, impl class name is null");
-    DynConstructors.Ctor<Catalog> ctor;
-    try {
-      ctor = DynConstructors.builder(Catalog.class).impl(impl).buildChecked();
-    } catch (NoSuchMethodException e) {
-      throw new IllegalArgumentException(
-          String.format("Cannot initialize Catalog implementation %s: %s", impl, e.getMessage()),
-          e);
-    }
+
+    CatalogService catalogService =
+        newServiceProvider(Catalog.class, CatalogService.class).withLegacyImpl(impl).load();
 
     Catalog catalog;
     try {
-      catalog = ctor.newInstance();
-
-    } catch (ClassCastException e) {
+      catalog = catalogService.buildUninitialized();
+    } catch (ClassCastException | LinkageError e) {
       throw new IllegalArgumentException(
-          String.format("Cannot initialize Catalog, %s does not implement Catalog.", impl), e);
+          String.format("Cannot initialize Catalog implementation %s: %s", impl, e.getMessage()),
+          e);
     }
 
     configureHadoopConf(catalog, hadoopConf);
@@ -275,28 +275,7 @@ public class CatalogUtil {
     if (catalogImpl == null) {
       String catalogType =
           PropertyUtil.propertyAsString(options, ICEBERG_CATALOG_TYPE, ICEBERG_CATALOG_TYPE_HIVE);
-      switch (catalogType.toLowerCase(Locale.ENGLISH)) {
-        case ICEBERG_CATALOG_TYPE_HIVE:
-          catalogImpl = ICEBERG_CATALOG_HIVE;
-          break;
-        case ICEBERG_CATALOG_TYPE_HADOOP:
-          catalogImpl = ICEBERG_CATALOG_HADOOP;
-          break;
-        case ICEBERG_CATALOG_TYPE_REST:
-          catalogImpl = ICEBERG_CATALOG_REST;
-          break;
-        case ICEBERG_CATALOG_TYPE_GLUE:
-          catalogImpl = ICEBERG_CATALOG_GLUE;
-          break;
-        case ICEBERG_CATALOG_TYPE_NESSIE:
-          catalogImpl = ICEBERG_CATALOG_NESSIE;
-          break;
-        case ICEBERG_CATALOG_TYPE_JDBC:
-          catalogImpl = ICEBERG_CATALOG_JDBC;
-          break;
-        default:
-          throw new UnsupportedOperationException("Unknown catalog type: " + catalogType);
-      }
+      catalogImpl = catalogType.toLowerCase(Locale.ENGLISH);
     } else {
       String catalogType = options.get(ICEBERG_CATALOG_TYPE);
       Preconditions.checkArgument(
@@ -326,24 +305,18 @@ public class CatalogUtil {
    */
   public static FileIO loadFileIO(String impl, Map<String, String> properties, Object hadoopConf) {
     LOG.info("Loading custom FileIO implementation: {}", impl);
-    DynConstructors.Ctor<FileIO> ctor;
-    try {
-      ctor =
-          DynConstructors.builder(FileIO.class)
-              .loader(CatalogUtil.class.getClassLoader())
-              .impl(impl)
-              .buildChecked();
-    } catch (NoSuchMethodException e) {
-      throw new IllegalArgumentException(
-          String.format("Cannot initialize FileIO implementation %s: %s", impl, e.getMessage()), e);
-    }
 
+    ServiceProvider<FileIO, FileIOService> provider =
+        newServiceProvider(FileIO.class, FileIOService.class)
+            // This makes ServiceProvider use 'impl' as a class name (via Service.serviceType()) OR
+            // a service name (via Service.serviceName()).
+            .withLegacyImpl(impl);
     FileIO fileIO;
     try {
-      fileIO = ctor.newInstance();
-    } catch (ClassCastException e) {
+      fileIO = provider.load().buildUninitialized();
+    } catch (ClassCastException | LinkageError e) {
       throw new IllegalArgumentException(
-          String.format("Cannot initialize FileIO, %s does not implement FileIO.", impl), e);
+          String.format("Cannot initialize FileIO implementation %s: %s", impl, e.getMessage()), e);
     }
 
     configureHadoopConf(fileIO, hadoopConf);
