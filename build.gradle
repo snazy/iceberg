@@ -653,6 +653,28 @@ project(':iceberg-delta-lake') {
   test {
     useJUnitPlatform()
   }
+
+  // The newest version of delta-core uses Spark 3.5.*. The integration test should only be built
+  // if iceberg-spark-3.5 is available
+  if (sparkVersions.contains("3.5")) {
+    sourceSets {
+      integration {
+        java.srcDir "$projectDir/src/integration/java"
+        resources.srcDir "$projectDir/src/integration/resources"
+        compileClasspath += main.output + test.output
+        runtimeClasspath += main.output + test.output
+      }
+    }
+
+    task integrationTest(type: Test) {
+      useJUnitPlatform()
+      testClassesDirs = sourceSets.integration.output.classesDirs
+      classpath = sourceSets.integration.runtimeClasspath
+      jvmArgs += project.property('extraJvmArgs')
+    }
+    check.dependsOn integrationTest
+  }
+
   configurations {
     integrationImplementation.extendsFrom testImplementation
     integrationRuntime.extendsFrom testRuntimeOnly
@@ -701,27 +723,6 @@ project(':iceberg-delta-lake') {
         exclude group: 'org.roaringbitmap'
       }
     }
-  }
-
-  // The newest version of delta-core uses Spark 3.5.*. The integration test should only be built
-  // if iceberg-spark-3.5 is available
-  if (sparkVersions.contains("3.5")) {
-    sourceSets {
-      integration {
-        java.srcDir "$projectDir/src/integration/java"
-        resources.srcDir "$projectDir/src/integration/resources"
-        compileClasspath += main.output + test.output
-        runtimeClasspath += main.output + test.output
-      }
-    }
-
-    task integrationTest(type: Test) {
-      useJUnitPlatform()
-      testClassesDirs = sourceSets.integration.output.classesDirs
-      classpath = sourceSets.integration.runtimeClasspath
-      jvmArgs += project.property('extraJvmArgs')
-    }
-    check.dependsOn integrationTest
   }
 }
 
