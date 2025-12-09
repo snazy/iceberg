@@ -19,9 +19,9 @@
 
 apply plugin: 'com.palantir.baseline-config'
 
-allprojects {
-  apply plugin: 'com.palantir.baseline-idea'
-}
+//allprojects {
+//  apply plugin: 'com.palantir.baseline-idea'
+//}
 
 subprojects {
   if (it.name == 'iceberg-bom') {
