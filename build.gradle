@@ -1082,10 +1082,12 @@ project(':iceberg-open-api') {
 
   build.dependsOn shadowJar
 
+  def icebergCoreProject = project(':iceberg-core')
+
   dependencies {
     testImplementation project(':iceberg-api')
-    testImplementation project(':iceberg-core')
-    testImplementation project(':iceberg-core').sourceSets.test.runtimeClasspath
+    testImplementation icebergCoreProject
+    testImplementation icebergCoreProject.sourceSets.test.runtimeClasspath
     testImplementation(testFixtures(project(':iceberg-open-api')))
 
     testImplementation libs.junit.jupiter
